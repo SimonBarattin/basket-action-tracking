@@ -41,7 +41,7 @@ import coco
 team_1 = [60,60,60,0]
 team_2 = [200,200,200,0]
 arbitro = [0, 102, 204, 0]
-points = []
+c = [(255,0,0),(0,255,0),(0,0,255),(255,255,255),(0,0,0)]
 
 # define random colors
 def random_colors(N):
@@ -51,6 +51,8 @@ def random_colors(N):
 
 #Take the image and apply the mask, box, and Label
 def display_instances(count, image, boxes, masks, ids, names, scores, resize):
+    P1 = []
+    P2 = []
     f = open("det/det_player_maskrcnn.txt", "a")
 
     n_instances = boxes.shape[0]
@@ -110,7 +112,10 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
                 x = x1+int(width/2)
                 y = y1+int(height/2)
                 center_coordinates = Point(x,y)
-                points.append(center_coordinates)
+                if team==1:
+                    P1.append(center_coordinates)
+                else:
+                    P2.append(center_coordinates)
 
             f.write('{},-1,{},{},{},{},{},-1,-1,-1,{}\n'.format(count, x1*resize, y1*resize, (x2 - x1)*resize, (y2 - y1)*resize, score, team))
 
@@ -120,11 +125,11 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
     #Update team's stats
     image = draw_team(image, clusters, counts)
 
-    R = bruteForce(points)
+    R = bruteForce(P1,P2,len(P1),len(P2))
     for i,t in enumerate(R):
         #print("("+str(t[0].x)+";"+str(t[0].y)+") - ("+str(t[1].x)+";"+str(t[1].y)+")")
-        image = cv2.circle(image, (t[0].x, t[0].y), 10, rgb[i], -1)
-        image = cv2.circle(image, (t[1].x, t[1].y), 10, rgb[i], -1)
+        image = cv2.circle(image, (t[0].x, t[0].y), 10, c[i], -1)
+        image = cv2.circle(image, (t[1].x, t[1].y), 10, c[i], -1)
 
 
     '''file_name = "splash_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
