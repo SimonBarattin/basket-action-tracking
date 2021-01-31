@@ -57,6 +57,7 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
     colors = random_colors(n_instances)
 
     color_list = []
+    rgb = []
 
     if not n_instances:
         return image
@@ -96,6 +97,8 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
             color_list.append(rgb_color)
 
             rgb_tuple = tuple([int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2])])
+            rgb.append(rgb_tuple)
+            team = getTeam(image, rgb_color)
 
             if team!=0:
                 caption = '{} {:.2f}'.format(label, score) if score else label
@@ -120,8 +123,8 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
     R = bruteForce(points)
     for i,t in enumerate(R):
         #print("("+str(t[0].x)+";"+str(t[0].y)+") - ("+str(t[1].x)+";"+str(t[1].y)+")")
-        image = cv2.circle(image, (t[0].x, t[0].y), 10, colors[i], -1)
-        image = cv2.circle(image, (t[1].x, t[1].y), 10, colors[i], -1)
+        image = cv2.circle(image, (t[0].x, t[0].y), 10, rgb[i], -1)
+        image = cv2.circle(image, (t[1].x, t[1].y), 10, rgb[i], -1)
 
 
     '''file_name = "splash_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
