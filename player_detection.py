@@ -57,6 +57,7 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
     colors = random_colors(n_instances)
 
     color_list = []
+    rgb = []
 
     if not n_instances:
         return image
@@ -96,21 +97,21 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
             color_list.append(rgb_color)
 
             rgb_tuple = tuple([int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2])])
-
-         
-            caption = '{} {:.2f}'.format(label, score) if score else label
-
-            image = apply_mask(image, mask, rgb_tuple)
-            image = cv2.rectangle(image, (x1+offset_w, y1+offset_head), (x2-offset_w, y2-offset_h), rgb_tuple, 1)
-            image = cv2.putText(image, caption, (x1, y1), cv2.FONT_HERSHEY_COMPLEX, 0.5, rgb_tuple, 2)
+            rgb.append(rgb_tuple)
             team = getTeam(image, rgb_color)
-            
-            if team!=0:   
+
+            if team!=0:
+                caption = '{} {:.2f}'.format(label, score) if score else label
+
+                image = apply_mask(image, mask, rgb_tuple)
+                image = cv2.rectangle(image, (x1+offset_w, y1+offset_head), (x2-offset_w, y2-offset_h), rgb_tuple, 1)
+                image = cv2.putText(image, caption, (x1, y1), cv2.FONT_HERSHEY_COMPLEX, 0.5, rgb_tuple, 2)
+
                 x = x1+int(width/2)
                 y = y1+int(height/2)
                 center_coordinates = Point(x,y)
                 points.append(center_coordinates)
-                    
+
             f.write('{},-1,{},{},{},{},{},-1,-1,-1,{}\n'.format(count, x1*resize, y1*resize, (x2 - x1)*resize, (y2 - y1)*resize, score, team))
 
     #Group to 3 cluster all the color found in the frame's bboxes
@@ -122,8 +123,8 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
     R = bruteForce(points)
     for i,t in enumerate(R):
         #print("("+str(t[0].x)+";"+str(t[0].y)+") - ("+str(t[1].x)+";"+str(t[1].y)+")")
-        image = cv2.circle(image, (t[0].x, t[0].y), 10, colors[i], -1)
-        image = cv2.circle(image, (t[1].x, t[1].y), 10, colors[i], -1)
+        image = cv2.circle(image, (t[0].x, t[0].y), 10, rgb[i], -1)
+        image = cv2.circle(image, (t[1].x, t[1].y), 10, rgb[i], -1)
 
 
     '''file_name = "splash_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())

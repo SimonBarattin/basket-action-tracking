@@ -38,5 +38,28 @@ def bruteForce(P):
 
     return R
 
-# for t in R:
-#     print("("+str(t[0].x)+";"+str(t[0].y)+") - ("+str(t[1].x)+";"+str(t[1].y)+")")
+# A Brute Force method to return the
+# smallest distance between two points
+# in different point lists
+# def bruteForce(P1, P2, n1, n2):
+#     R = []
+#     if(n1<n2):
+#         n = n1
+#         ex = n2-n1
+#     else:
+#         n = n2
+#         ex = n1-n2
+#     for k in range(n):
+#         min_val = float('inf')
+#         for i in range(n):
+#             for j in range(n):
+#                 if dist(P1[i], P2[j]) < min_val:
+#                     min_val = dist(P1[i], P2[j])
+#                     t1 = P1[i]
+#                     t2 = P2[j]
+#         P1.remove(t1)
+#         P2.remove(t2)
+#         t = (t1,t2)
+#         R.append(t)
+#         n = n-1
+#     return R

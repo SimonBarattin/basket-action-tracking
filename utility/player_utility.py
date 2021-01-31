@@ -157,4 +157,4 @@ def getTeam(image, color):
 
     return ret
 
-#def pairPoints(image, x1, y1, x2, y2):
+def pairPoints(image, x1, y1, x2, y2):
