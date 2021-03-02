@@ -43,6 +43,10 @@ team_2 = [200,200,200,0]
 arbitro = [0, 102, 204, 0]
 c = [(255,0,0),(0,255,0),(0,0,255),(255,255,255),(0,0,0)]
 
+#homography
+homography, status = cv2.findHomography(pts_src, pts_dst)
+homography_inverse =  np.linalg.inv(homography)
+
 # define random colors
 def random_colors(N):
     np.random.seed(1)
@@ -123,17 +127,13 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
     clusters, counts = parse_colors(color_list, 3)
 
     #Update team's stats
-    image = draw_team(image, clusters, counts)
+    #image = draw_team(image, clusters, counts)
 
-    R = bruteForce(P1,P2,len(P1),len(P2))
+    R = bruteForce(P1,P2,len(P1),len(P2),homography,homography_inverse)
     for i,t in enumerate(R):
-        #print("("+str(t[0].x)+";"+str(t[0].y)+") - ("+str(t[1].x)+";"+str(t[1].y)+")")
+        print("("+str(t[0].x)+";"+str(t[0].y)+") - ("+str(t[1].x)+";"+str(t[1].y)+")")
         image = cv2.circle(image, (t[0].x, t[0].y), 10, c[i], -1)
         image = cv2.circle(image, (t[1].x, t[1].y), 10, c[i], -1)
-
-
-    '''file_name = "splash_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
-    skimage.io.imsave(file_name, image)'''
 
     f.close()
 
