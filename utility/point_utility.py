@@ -4,8 +4,7 @@ import numpy as np
 import cv2
 # A class to represent a Point in 2D plane
 
-pts_src = np.array([[1030, 1090], [215, 1625], [3639, 1539],[2902, 1038]])
-pts_dst = np.array([[38, 30],[38, 571],[1045, 571],[1045, 30]])
+c = [(255,0,0),(0,255,0),(0,0,255),(255,255,255),(0,0,0),(255,255,0),(255,0,255)]
 
 class Point():
     def __init__(self, x, y):
@@ -23,7 +22,7 @@ def dist(p1, p2):
 # A Brute Force method to return the
 # smallest distance between two points
 # in different point lists
-def bruteForce(P1, P2, n1, n2, h, h_inv):
+def bruteForce(P1, P2, n1, n2, h, h_inv, court):
     R = []
     T = []
     P1, P2 = imagePlane(P1, P2, n1, n2, h)
@@ -54,6 +53,9 @@ def bruteForce(P1, P2, n1, n2, h, h_inv):
         n = n-1
         x = x-1
     for i,t in enumerate(R):
+        court = cv2.circle(court, (t[0].x, t[0].y), 3, c[i], -1)
+        court = cv2.circle(court, (t[1].x, t[1].y), 3, c[i], -1)
+    for i,t in enumerate(R):
         p1 = np.float32([[[t[0].x,t[0].y]]])
         p2 = np.float32([[[t[1].x,t[1].y]]])
         detransformed1 = cv2.perspectiveTransform(p1, h_inv)
@@ -62,7 +64,21 @@ def bruteForce(P1, P2, n1, n2, h, h_inv):
         t2 = Point(np.round(detransformed2[0][0][0]).astype(int), np.round(detransformed2[0][0][1]).astype(int))
         tot = (t1,t2)
         T.append(tot)
-    return T
+    return T, court
+
+# project points onto homography
+def WarpPoint(point,homography):
+    """
+    -point = (x,y)
+    """
+    point = np.array(point)
+    x,y = point[:2].reshape(-1)
+    p_homogenous_src = np.array([x,y,1.0])
+    p_homogenous_dst = homography.dot(p_homogenous_src)
+    p_cartesian_dst = p_homogenous_dst[:2]/p_homogenous_dst[-1]
+    point_dst = tuple( np.round(p_cartesian_dst).astype(int) )
+
+    return point_dst
 
 def imagePlane(P1, P2, n1, n2, homography):
     T1 = []
