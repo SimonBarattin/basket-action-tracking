@@ -217,8 +217,8 @@ def video_segmentation(model, class_names, video_path, resize=2, display=False):
                 count += 1
 
     #Needed per the print progress
-    pbar.update(1)
-    sleep(0.01)
+            pbar.update(1)
+            sleep(0.01)
 
     vwriter.release()
     writer.release()
