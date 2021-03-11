@@ -16,7 +16,6 @@ from math import sqrt
 import time
 
 from utility.player_utility import *
-from utility.point_utility import *
 
 # Root directory of the project
 ROOT_DIR = os.path.abspath("../../")
@@ -41,28 +40,6 @@ import coco
 team_1 = [60,60,60,0]
 team_2 = [200,200,200,0]
 arbitro = [0, 102, 204, 0]
-c = [(255,0,0),(0,255,0),(0,0,255),(255,255,255),(0,0,0),(255,0,255),(255,255,0)]
-
-#homography
-#homography, status = cv2.findHomography(pts_src, pts_dst)
-#homography_inverse =  np.linalg.inv(homography)
-
-# Four corners of the 2d plain
-pts_dst = np.array([
-      [6, 5],
-      [6, 355],
-      [319, 355],
-      [632, 355],
-      [632, 5]
-    ])
-# Four corners of the court
-pts_src = np.array([
-        [394, 570],
-        [31, 840],
-        [900, 885],
-        [1889, 818],
-        [1563, 537]
-    ])
 
 # define random colors
 def random_colors(N):
@@ -71,16 +48,13 @@ def random_colors(N):
     return colors
 
 #Take the image and apply the mask, box, and Label
-def display_instances(count, image, boxes, masks, ids, names, scores, resize, court, homography, homography_inverse):
-    P1 = []
-    P2 = []
+def display_instances(count, image, boxes, masks, ids, names, scores, resize):
     f = open("det/det_player_maskrcnn.txt", "a")
 
     n_instances = boxes.shape[0]
     colors = random_colors(n_instances)
 
     color_list = []
-    rgb = []
 
     if not n_instances:
         return image
@@ -99,7 +73,7 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize, co
         height = y2 - y1
 
         #If a player
-        if score > 0.6 and label == 'person':
+        if score > 0.75 and label == 'person':
             mask = masks[:, :, i]
 
             #Create a masked image where the pixel not in mask is green
@@ -109,6 +83,9 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize, co
             offset_w = int(width/6)
             offset_h = int(height/3)
             offset_head = int(height/8)
+
+            #file_name = "mask_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
+            #skimage.io.imsave(file_name, mat_mask)
 
             #Crop the image with some defined offset
             crop_img = mat_mask[y1+offset_head:y2-offset_h, x1+offset_w:x2-offset_w]
@@ -120,23 +97,14 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize, co
             color_list.append(rgb_color)
 
             rgb_tuple = tuple([int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2])])
-            rgb.append(rgb_tuple)
+
+            caption = '{} {:.2f}'.format(label, score) if score else label
+
+            image = apply_mask(image, mask, rgb_tuple)
+            image = cv2.rectangle(image, (x1+offset_w, y1+offset_head), (x2-offset_w, y2-offset_h), rgb_tuple, 2)
+            image = cv2.putText(image, caption, (x1, y1), cv2.FONT_HERSHEY_COMPLEX, 0.7, rgb_tuple, 2)
+
             team = getTeam(image, rgb_color)
-
-            if team!=0:
-                caption = '{} {:.2f}'.format(label, score) if score else label
-
-                image = apply_mask(image, mask, rgb_tuple)
-                image = cv2.rectangle(image, (x1+offset_w, y1+offset_head), (x2-offset_w, y2-offset_h), rgb_tuple, 1)
-                image = cv2.putText(image, caption, (x1, y1), cv2.FONT_HERSHEY_COMPLEX, 0.5, rgb_tuple, 2)
-
-                x = x1+int(width/2)
-                y = y1+int(height/2)
-                center_coordinates = Point(x,y)
-                if team==1:
-                    P1.append(center_coordinates)
-                elif team==2:
-                    P2.append(center_coordinates)
 
             f.write('{},-1,{},{},{},{},{},-1,-1,-1,{}\n'.format(count, x1*resize, y1*resize, (x2 - x1)*resize, (y2 - y1)*resize, score, team))
 
@@ -144,28 +112,19 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize, co
     clusters, counts = parse_colors(color_list, 3)
 
     #Update team's stats
-    #image = draw_team(image, clusters, counts)
-
-    R, court = bruteForce(P1,P2,len(P1),len(P2),homography,homography_inverse,court)
-    for i,t in enumerate(R):
-        #print("("+str(t[0].x)+";"+str(t[0].y)+") - ("+str(t[1].x)+";"+str(t[1].y)+")")
-        image = cv2.circle(image, (t[0].x, t[0].y), 10, c[i], -1)
-        image = cv2.circle(image, (t[1].x, t[1].y), 10, c[i], -1)
+    image = draw_team(image, clusters, counts)
 
     '''file_name = "splash_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
     skimage.io.imsave(file_name, image)'''
 
     f.close()
 
-    return image, court
+    return image
 
 def video_segmentation(model, class_names, video_path, resize=2, display=False):
     start = time.time()
 
     f = open("det/det_player_maskrcnn.txt", "w").close()
-
-    homography, status = cv2.findHomography(pts_src, pts_dst)
-    homography_inverse =  np.linalg.inv(homography)
 
     # Video capture
     vcapture = cv2.VideoCapture(video_path)
@@ -184,44 +143,49 @@ def video_segmentation(model, class_names, video_path, resize=2, display=False):
     count = 0
     success = True
 
-    mask = cv2.imread('roi_mask.jpg',0)
-    court_img = cv2.imread('basket_field.jpg')
-
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    writer = cv2.VideoWriter("output/mini-map-output.mp4", fourcc, 24, (court_img.shape[1], court_img.shape[0]), True)
-
     with tqdm(total=length_input, file=sys.stdout) as pbar:
         while success:
             success, image = vcapture.read()
             if success:
                 # OpenCV returns images as BGR, convert to RGB
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                court = court_img.copy()
+
+                # Basket pitch mask
+                '''
+                mask = get_mask('roi_mask.jpg')
+                mask = np.expand_dims(mask,2)
+                mask = np.repeat(mask,3,2)
+
+                #Apply pitch mask to esclude the people outside
+                image = image * mask
+                image = image.astype(np.uint8)
+                '''
 
                 # Resize for better performance
-                #image = cv2.resize(image, (int(width/resize), int(height/resize)))
-                mask = cv2.resize(mask, image.shape[1::-1])
-
-                image = cv2.bitwise_and(image,image,mask=mask)
+                image = cv2.resize(image, (int(width/resize), int(height/resize)))
 
                 #Detect objects
                 r = model.detect([image], verbose=0)[0]
+
                 #Process objects
-                frame, court = display_instances(count, image, r["rois"], r["masks"], r["class_ids"], class_names, r["scores"], resize, court,
-                    homography, homography_inverse)
+                frame = display_instances(count, image, r["rois"], r["masks"], r["class_ids"], class_names, r["scores"], resize)
                 # RGB -> BGR to save image to video
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+                if display:
+                    cv2.imshow('MaskRCNN Ball Tracking', frame)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
+
                 # Add image to video writer
-                writer.write(court)
                 vwriter.write(frame)
                 count += 1
 
-    #Needed per the print progress
+            #Needed per the print progress
             pbar.update(1)
             sleep(0.01)
 
     vwriter.release()
-    writer.release()
 
     end = time.time()
     print("Saved to ", file_name)

@@ -26,7 +26,7 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 sys.path.append(ROOT_DIR)  # To find local version of the library
 
 #Tacking using OpenCV implementation of CSRT 
-def opencv_tracking(video_path, detection_path, resize=2, txt_path="det/det_track_maskrcnn.txt"):
+def opencv_tracking(video_path, detection_path, resize=1, txt_path="det/det_track_maskrcnn.txt"):
     start = time.time()
 
     #BBOX file path
@@ -37,9 +37,12 @@ def opencv_tracking(video_path, detection_path, resize=2, txt_path="det/det_trac
 
     #Convert file detection to dictionary
     gt_dict = get_dict(detection_path)
-    
+
+    params = cv2.TrackerCSRT_Params()
+    params.psr_threshold = 0.08
+
     #Initialize tracker
-    tracker = cv2.TrackerCSRT_create()
+    tracker = cv2.TrackerCSRT_create(params)
 
     # Input video
     video = cv2.VideoCapture(video_path)
@@ -54,10 +57,6 @@ def opencv_tracking(video_path, detection_path, resize=2, txt_path="det/det_trac
     if not video.isOpened():
         print ("Could not open video")
         sys.exit()
-
-    file_path = 'tracker_params.yaml'
-    fp = cv2.FileStorage(file_path, cv2.FILE_STORAGE_READ)  # Read file
-      # Do not use: tracker.read(fp.root())
 
     frame_id = 0
     ret = True
@@ -96,7 +95,22 @@ def opencv_tracking(video_path, detection_path, resize=2, txt_path="det/det_trac
                 det_frame+=1
 
             #If no bbox initialized
-            if initBB is None or frame_id % 1 == 0:
+            if initBB is None or (prev_box[0] == 0 and prev_box[1] == 0):
+                best_score = 0
+
+                for i, bbox in enumerate(boxes):
+                    coor = np.array(bbox[:4], dtype=np.int32)
+                    initBB = (coor[0] - bbox_offset, coor[1] - bbox_offset, coor[2] + 2*bbox_offset, coor[3] + 2*bbox_offset)
+
+                    cv2.putText(frame, "Tracking perso. Nuovo punto: {}{}".format(initBB[0], initBB[1]), (16, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 2)
+
+                    if scores[i] > best_score: 
+                        tracker = cv2.TrackerCSRT_create(params)
+                        tracker.init(frame, initBB)
+                        fps = FPS().start()
+                        best_score = scores[i]
+            else:
                 min_distance = 99999
 
                 for i, bbox in enumerate(boxes):
@@ -104,32 +118,23 @@ def opencv_tracking(video_path, detection_path, resize=2, txt_path="det/det_trac
 
                     # bbox initialized with an offset to better discriminate using dome background information
                     initBB = (coor[0] - bbox_offset, coor[1] - bbox_offset, coor[2] + 2*bbox_offset, coor[3] + 2*bbox_offset)
-
                     #Difference between new detections and last tracking by CSRT
                     eucl = math.sqrt((coor[0] - prev_box[0]) ** 2 + (coor[1] - prev_box[1]) ** 2)             
 
                     #Check if bbox is close enough in about N frames
-                    if (prev_box[0] == 0 and prev_box[1] == 0) or initBB is None:
-                        if scores[i] > best_score: 
-                            tracker = cv2.TrackerCSRT_create()
-                            tracker.init(frame, initBB)
-                            fps = FPS().start()
-                            best_score = scores[i]
-                    elif (frame_diff > 8 or eucl < 150): 
+                    if (frame_diff > 8 or eucl < 200): 
                         #Get the closest bbox
                         if eucl < min_distance: 
                             min_distance = eucl
                             
-                            tracker = cv2.TrackerCSRT_create()
+                            tracker = cv2.TrackerCSRT_create(params)
                             #tracker.read(fp.getFirstTopLevelNode())
                             tracker.init(frame, initBB)
-                        
                             fps = FPS().start()
 
                             frame_diff = 0        
                     else:
                         frame_diff += 1
-
                         cv2.putText(frame, "Frame without valid det: {}".format(frame_diff), (16, 50),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 2)
                             

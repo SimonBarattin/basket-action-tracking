@@ -22,10 +22,10 @@ def dist(p1, p2):
 # A Brute Force method to return the
 # smallest distance between two points
 # in different point lists
-def bruteForce(P1, P2, n1, n2, h, h_inv, court):
+def bruteForce(P1, P2, n1, n2, h, h_inv, court, h_p, h_inv_p):
     R = []
     T = []
-    P1, P2 = imagePlane(P1, P2, n1, n2, h)
+    P1, P2 = imagePlane(P1, P2, n1, n2, h_p)
     if(n1<n2):
         n = n1
         x = n2
@@ -58,8 +58,10 @@ def bruteForce(P1, P2, n1, n2, h, h_inv, court):
     for i,t in enumerate(R):
         p1 = np.float32([[[t[0].x,t[0].y]]])
         p2 = np.float32([[[t[1].x,t[1].y]]])
-        detransformed1 = cv2.perspectiveTransform(p1, h_inv)
-        detransformed2 = cv2.perspectiveTransform(p2, h_inv)
+        #detransformed1 = cv2.perspectiveTransform(p1, h_inv)
+        #detransformed2 = cv2.perspectiveTransform(p2, h_inv)
+        detransformed1 = cv2.perspectiveTransform(p1, h_inv_p)
+        detransformed2 = cv2.perspectiveTransform(p2, h_inv_p)
         t1 = Point(np.round(detransformed1[0][0][0]).astype(int), np.round(detransformed1[0][0][1]).astype(int))
         t2 = Point(np.round(detransformed2[0][0][0]).astype(int), np.round(detransformed2[0][0][1]).astype(int))
         tot = (t1,t2)
@@ -97,3 +99,10 @@ def imagePlane(P1, P2, n1, n2, homography):
         T2.append(temp)
 
     return T1, T2
+
+def ball_homography(p, h, h_inv, court):
+    points = np.float32([[[p.x,p.y]]])
+    transformed = cv2.perspectiveTransform(points, h)
+    p_transf = Point(transformed[0][0][0], transformed[0][0][1])
+    court = cv2.circle(court, (p_transf.x, p_transf.y), 3, (0, 153, 255), -1)
+    return court

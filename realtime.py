@@ -14,6 +14,7 @@ import math
 import time
 
 from utility.player_utility import *
+from utility.point_utility import *
 from statistics import Statistics
 
 # Root directory of the project
@@ -54,15 +55,43 @@ coco_class = ['BG', 'person', 'bicycle', 'car', 'motorcycle', 'airplane',
     'keyboard', 'cell phone', 'microwave', 'oven', 'toaster',
     'sink', 'refrigerator', 'book', 'clock', 'vase', 'scissors',
     'teddy bear', 'hair drier', 'toothbrush']
+    
+# Four corners of the 2d plain
+pts_dst = np.array([
+      [6, 5],
+      [6, 355],
+      [319, 355],
+      [632, 355],
+      [632, 5]
+    ])
+# Four corners of the court
+pts_src = np.array([
+        [394, 570],
+        [31, 840],
+        [900, 885],
+        [1889, 818],
+        [1563, 537]
+    ])
+
+pts_src_player = np.array([
+        [394, 547],
+        [31, 817],
+        [900, 862],
+        [1889, 795],
+        [1563, 514]
+    ])
 
 # Base config for ball detection
 class BasketConfig(Config):
     NAME = "basket"
     IMAGES_PER_GPU = 2
     NUM_CLASSES = 1 + 1  # Background + basketball
-    STEPS_PER_EPOCH = 150
-    DETECTION_MIN_CONFIDENCE = 0.90
+    STEPS_PER_EPOCH = 175
+    DETECTION_MIN_CONFIDENCE = 0.94
     BACKBONE = 'resnet50'
+    DETECTION_NMS_THRESHOLD = 0.2
+    RPN_ANCHOR_SCALES = (16, 32, 64, 128, 256)
+    WEIGHT_DECAY = 0.005
 
 # define random colors
 def random_colors(N):
@@ -71,7 +100,9 @@ def random_colors(N):
     return colors
 
 #Take the image and apply the mask, box, and Label
-def player_instances(count, image, boxes, masks, ids, names, scores, resize):
+def player_instances(count, image, boxes, masks, ids, names, scores, resize, court, homography, homography_inverse, h_p, h_inv_p):
+    P1 = []
+    P2 = []
     f = open("det/det_player_maskrcnn.txt", "a")
 
     n_instances = boxes.shape[0]
@@ -90,7 +121,7 @@ def player_instances(count, image, boxes, masks, ids, names, scores, resize):
         if not np.any(boxes[i]):
             continue
 
-        y1, x1, y2, x2 = boxes[i]
+        y1, x1, y2, x2 = boxes[i] * resize
         label = names[ids[i]]
         score = scores[i] if scores is not None else None
 
@@ -119,35 +150,48 @@ def player_instances(count, image, boxes, masks, ids, names, scores, resize):
             color_list.append(rgb_color)
 
             rgb_tuple = tuple([int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2])]) 
-
-            caption = '{} {:.2f}'.format(label, score) if score else label
-        
-            image = apply_mask(image, mask, rgb_tuple)
-            image = cv2.rectangle(image, (x1, y1), (x2, y2), rgb_tuple, 3)
-            image = cv2.putText(image, caption, (x1, y1 - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, rgb_tuple, 2)
-
             team = getTeam(image, rgb_color)
+            
+            if team!=0:
+                caption = '{} {:.2f}'.format(label, score) if score else label
+            
+                image = apply_mask(image, mask, rgb_tuple)
+                image = cv2.rectangle(image, (x1, y1), (x2, y2), rgb_tuple, 3)
+                image = cv2.putText(image, caption, (x1, y1 - 15), cv2.FONT_HERSHEY_SIMPLEX, 0.8, rgb_tuple, 2)
+                
+                x = x1+int(width/2)
+                y = y1+int(height/2)
+                center_coordinates = Point(x,y)
+                if team==1:
+                    P1.append(center_coordinates)
+                elif team==2:
+                    P2.append(center_coordinates)
 
-            players_boxes.append([x1*resize, y1*resize, (x2 - x1)*resize, (y2 - y1)*resize])
+            players_boxes.append([x1, y1, (x2 - x1), (y2 - y1)])
             players_id.append(team)
 
-            f.write('{},-1,{},{},{},{},{},-1,-1,-1 {}\n'.format(count, x1*resize, y1*resize, (x2 - x1)*resize, (y2 - y1)*resize, score, team))
+            f.write('{},-1,{},{},{},{},{},-1,-1,-1,{} \n'.format(count, x1, y1, (x2 - x1), (y2 - y1), score, team))
 
     #Group to 3 cluster all the color found in the frame's bboxes
     clusters, counts = parse_colors(color_list, 3)
 
     #Update team's stats
-    image = draw_team(image, clusters, counts)
+    #image = draw_team(image, clusters, counts)
+    R, court = bruteForce(P1,P2,len(P1),len(P2),homography,homography_inverse,court,h_p,h_inv_p)
+    for i,t in enumerate(R):
+        #print("("+str(t[0].x)+";"+str(t[0].y)+") - ("+str(t[1].x)+";"+str(t[1].y)+")")
+        image = cv2.circle(image, (t[0].x, t[0].y), 10, c[i], -1)
+        image = cv2.circle(image, (t[1].x, t[1].y), 10, c[i], -1)
     f.close()
 
-    return image, players_boxes, players_id
+    return image, players_boxes, players_id, court
 
 #take the image and apply the mask, box, and Label
 def ball_instances(count, image, boxes, masks, ids, names, scores, resize):
     f = open("det/det_maskrcnn.txt", "a")
 
     #Finetuning of the ball detection to avoid outsiders
-    min_ball_size = 30
+    min_ball_size = 10
     max_ball_size = 1500
 
     n_instances = boxes.shape[0]
@@ -168,7 +212,7 @@ def ball_instances(count, image, boxes, masks, ids, names, scores, resize):
         if not np.any(boxes[i]):
             continue
 
-        y1, x1, y2, x2 = boxes[i]
+        y1, x1, y2, x2 = boxes[i] * resize
         label = names[ids[i]]
         score = scores[i] if scores is not None else None
 
@@ -177,7 +221,7 @@ def ball_instances(count, image, boxes, masks, ids, names, scores, resize):
 
         area = width * height
 
-        if score > 0.85: 
+        if score > 0.90: 
             label = names[ids[i]]
             caption = '{} {:.2f}'.format(label, score) if score else label
             mask = masks[:, :, i]
@@ -190,9 +234,8 @@ def ball_instances(count, image, boxes, masks, ids, names, scores, resize):
                 best_score = score
                 best_index = i
 
-    
     if best_index >= 0:
-        y1, x1, y2, x2 = boxes[best_index]
+        y1, x1, y2, x2 = boxes[best_index] * resize
         label = names[ids[best_index]]
         caption = '{} {:.2f}'.format(label, score) if best_score else label
         mask = masks[:, :, best_index]
@@ -200,19 +243,22 @@ def ball_instances(count, image, boxes, masks, ids, names, scores, resize):
         #image = cv2.rectangle(image, (x1, y1), (x2, y2), (255, 0,0), 5)
         #image = cv2.putText(image, "BALL", (x1, y1), cv2.FONT_HERSHEY_COMPLEX, 0.8, (255,0,0), 2)
 
-        dict_result = [x1*resize, y1*resize, (x2 - x1)*resize, (y2 - y1)*resize, best_score]
+        dict_result = [x1, y1, (x2 - x1), (y2 - y1), best_score]
 
-        f.write('{},-1,{},{},{},{},{},-1,-1,-1\n'.format(count, x1*resize, y1*resize, (x2 - x1)*resize, (y2 - y1)*resize, best_score))
+        f.write('{},-1,{},{},{},{},{},-1,-1,-1\n'.format(count, x1, y1, (x2 - x1), (y2 - y1), best_score))
 
     f.close()
 
     return image, dict_result
 
-def general_detection(image, model):
-    return model.detect([image], verbose=0)[0]
-
 def video_detection(stat, ball_model, player_model, video_path, txt_path="det/det_track_maskrcnn.txt", resize=1, display=False):
+    f = open("det/det_maskrcnn.txt", "w").close()
     f = open(txt_path, "w")
+    
+    homography, status = cv2.findHomography(pts_src, pts_dst)
+    homography_inverse =  np.linalg.inv(homography)
+    homography_player, status = cv2.findHomography(pts_src_player, pts_dst)
+    homography_inverse_player =  np.linalg.inv(homography_player)
 
     # Video capture
     vcapture = cv2.VideoCapture(video_path)
@@ -232,6 +278,10 @@ def video_detection(stat, ball_model, player_model, video_path, txt_path="det/de
     count = 1
     success = True
     total_det = 0
+    
+    court_img = cv2.imread('basket_field.jpg')
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    writer = cv2.VideoWriter("output/mini-map-output.mp4", fourcc, 24, (court_img.shape[1], court_img.shape[0]), True)
 
     tracker = cv2.TrackerCSRT_create()
 
@@ -246,63 +296,66 @@ def video_detection(stat, ball_model, player_model, video_path, txt_path="det/de
     _, first = vcapture.read()
 
     # Draw central line
-    stat.initialize(first)
+    stat.initialize(first, resize)
 
     with tqdm(total=length_input, file=sys.stdout) as pbar:
         while success:
             success, image = vcapture.read()
             if success:
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                c_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                c_image = image.copy()
+                ball_image = image.copy()
+                track_image = image.copy()
+                court = court_img.copy()
 
                 #Mask for LATERAL VIEW GAME ONLY!
                 mask = get_mask('roi_mask.jpg')
                 mask = np.expand_dims(mask,2)
                 mask = np.repeat(mask,3,2)
+                mask = cv2.resize(mask, image.shape[1::-1])
 
                 #Apply pitch mask to esclude the people outside
                 masked_pitch = image * mask
                 masked_pitch = masked_pitch.astype(np.uint8)
 
                 #Reduce computing impact
-                masked_pitch = cv2.resize(masked_pitch, (int(width/resize), int(height/resize)))
+                #masked_pitch = cv2.resize(masked_pitch, (int(width/resize), int(height/resize)))
                 image = cv2.resize(image, (int(width/resize), int(height/resize)))
                 
                 # Apply detections model
+                ball_ret = ball_model.detect([ball_image], verbose=0)[0]
                 player_ret = player_model.detect([masked_pitch], verbose=0)[0]
-                ball_ret = ball_model.detect([image], verbose=0)[0]
 
                 # Draw and save bbox result
                 # Process player
-                frame, p_boxes, p_id = player_instances(count, image, player_ret["rois"], player_ret["masks"], player_ret["class_ids"], coco_class, player_ret["scores"], resize)
+                frame, p_boxes, p_id, court = player_instances(count, c_image, player_ret["rois"], player_ret["masks"], player_ret["class_ids"], coco_class, player_ret["scores"], 1, court,homography, homography_inverse, homography_player, homography_inverse_player)
 
                 # Process ball and start tracker
-                _, detection = ball_instances(count, image, ball_ret["rois"], ball_ret["masks"], ball_ret["class_ids"], ball_class, ball_ret["scores"], resize)
+                _, detection = ball_instances(count, frame, ball_ret["rois"], ball_ret["masks"], ball_ret["class_ids"], ball_class, ball_ret["scores"], resize)
 
                 #Tracking phase
-                if detection != [] and (initBB is None or count % 1 == 0):
-                    min_distance = 99999
-                    
+                if detection != []:
                     coor = np.array(detection[:4], dtype=np.int32)
-                    initBB = (coor[0] - bbox_offset, coor[1] - bbox_offset, coor[2] + 2*bbox_offset, coor[3] + 2*bbox_offset)
-                    eucl = math.sqrt((coor[0] - prev_box[0]) ** 2 + (coor[1] - prev_box[1]) ** 2)  
-
-                    if (prev_box[0] == 0 and prev_box[1] == 0) or initBB is None:
+                    if initBB is None or (prev_box[0] == 0 and prev_box[1] == 0):
+                        initBB = (coor[0] - bbox_offset, coor[1] - bbox_offset, coor[2] + 2*bbox_offset, coor[3] + 2*bbox_offset)
                         tracker = cv2.TrackerCSRT_create()
-                        tracker.init(c_image, initBB)
-                    elif (frame_diff > 8 or eucl < 150): 
-                        tracker = cv2.TrackerCSRT_create()
-                        tracker.init(c_image, initBB)
-
-                        frame_diff = 0        
+                        tracker.init(track_image, initBB)
                     else:
-                        frame_diff += 1
-                        cv2.putText(frame, "Frame without valid det: {}".format(frame_diff), (16, 50),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 0, 255), 2)
+                        min_distance = 99999
+                        initBB = (coor[0] - bbox_offset, coor[1] - bbox_offset, coor[2] + 2*bbox_offset, coor[3] + 2*bbox_offset)
+                        eucl = math.sqrt((coor[0] - prev_box[0]) ** 2 + (coor[1] - prev_box[1]) ** 2)  
+                    
+                        if frame_diff > 8 or eucl < 200: 
+                            tracker = cv2.TrackerCSRT_create()
+                            tracker.init(track_image, initBB)
 
+                            frame_diff = 0        
+                        else:
+                            frame_diff += 1
+                            
                 # If there is a new bbox, update the tracker
                 if initBB is not None: 
-                    (success, tracked_box) = tracker.update(c_image)
+                    (success, tracked_box) = tracker.update(track_image)
 
                     if success:
                         #Save tracking boxes (include also det)
@@ -320,6 +373,8 @@ def video_detection(stat, ball_model, player_model, video_path, txt_path="det/de
 
                 d_fps = round(count / frame_time, 2)
 
+                print("FPS: {}".format(d_fps))
+
                 frame = cv2.rectangle(frame, (width - 200, 50), (width - 50, 150), (0,0,0), -1)
                 frame = cv2.putText(frame, "{}".format(d_fps), (width - 170, 100), cv2.FONT_HERSHEY_SIMPLEX, 1.3, (230,230,230), 2)
 
@@ -327,19 +382,28 @@ def video_detection(stat, ball_model, player_model, video_path, txt_path="det/de
                 stat_image = stat.run_stats(frame, [tracked_box], p_boxes, p_id, fps, count)
 
                 # Draw tracked ball here for z-index reason
-                p1 = (int(tracked_box[0]/resize), int(tracked_box[1]/resize))
-                p2 = (int(tracked_box[0]/resize + tracked_box[2]/resize), int(tracked_box[1]/resize + tracked_box[3]/resize))
+                p1 = (int(tracked_box[0]), int(tracked_box[1]))
+                p2 = (int(tracked_box[0] + tracked_box[2]), int(tracked_box[1] + tracked_box[3]))
                 cv2.rectangle(stat_image, p1, p2, (0, 153, 255), 7, 4)
                 cv2.putText(stat_image, "ball", (p1[0], p1[1] - 20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 153, 255), 3)
+                
+                x_ball = p1[0]+int((p2[0]-p1[0])/2)
+                y_ball = p1[1]+int((p2[1]-p1[1])/2)
+                center_coordinates_ball = Point(x_ball,y_ball)
+                court = ball_homography(center_coordinates_ball, homography,homography_inverse,court)
+
+                to_save = cv2.resize(stat_image, (int(width/resize), int(height/resize)))
+                
+                # Add image to video writer
+                vwriter.write(stat_image)
+                writer.write(court)
 
                 if display:
-                    toshow = cv2.resize(stat_image, (int(width/2), int(height/2)))
-                    cv2.imshow('YOLO Object Detection', toshow)
+                    to_show = cv2.resize(stat_image, (int(width/2), int(height/2)))
+                    cv2.imshow('YOLO Object Detection', to_show)
                     if cv2.waitKey(1) & 0xFF == ord('q'):
                         break
     
-                # Add image to video writer
-                vwriter.write(frame)
                 count += 1
 
             #Fancy print
@@ -347,6 +411,7 @@ def video_detection(stat, ball_model, player_model, video_path, txt_path="det/de
             sleep(0.02)
 
     vwriter.release()
+    writer.release()
     print("Saved to ", file_name)
 
     # Saving complete stats on file
@@ -380,6 +445,8 @@ if __name__ == '__main__':
         GPU_COUNT = 1
         IMAGES_PER_GPU = 1
     class PlayerConfig(coco.CocoConfig):
+        BACKBONE = 'resnet101'
+        DETECTION_MIN_CONFIDENCE = 0.86
         GPU_COUNT = 1
         IMAGES_PER_GPU = 1
 
@@ -403,4 +470,4 @@ if __name__ == '__main__':
     stat = Statistics()
 
     # TODO detection player and ball
-    video_detection(stat, ball_model, player_model, video_path=args.video, display=args.display)
+    video_detection(stat, ball_model, player_model, video_path=args.video, display=False)

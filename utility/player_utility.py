@@ -21,19 +21,19 @@ def get_mask(filename):
 	mask = cv2.imread(filename,0)
 	mask = mask / 255.0
 	return mask
-
+ 
 # Apply mask to image
-def apply_mask(image, mask, color, alpha=0.7):
+def apply_mask(image, mask, color, alpha=0.4):
     for n, c in enumerate(color):
         image[:, :, n] = np.where(mask == 1, image[:, :, n] * (1-alpha) + alpha * c, image[:, :, n])
-
+    
     return image
 
 # Apply green screen on out of the mask
 def cut_by_mask(image, mask, color=(0,255,0)):
     for n, c in enumerate(color):
         image[:, :, n] = np.where(mask == 1, image[:, :, n], c)
-
+    
     return image
 
 # Return dominant color from image using Kmeans
@@ -45,6 +45,8 @@ def get_dominant(img):
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 200, .1)
     flags = cv2.KMEANS_RANDOM_CENTERS
     _,labels,palette = cv2.kmeans(data,5,None,criteria,10,flags)
+    
+
     _, counts = np.unique(labels, return_counts=True)
 
     best_palette = []
@@ -56,11 +58,11 @@ def get_dominant(img):
         #print("iter {}: {} with {} counts".format(i, c, counts[i]))
         if (c.astype(np.uint8)[1] >= 250 and c.astype(np.uint8)[0] < 15 and c.astype(np.uint8)[2] < 15) or (c.astype(np.uint8) <= 30).all():
             continue
-        elif diff < 150 and c[2] > 80:
+        elif diff < 150 and c[2] > 80: 
             best_palette = np.asarray(arbitro[0:3])
             break
         else:
-            if counts[i] > best_count:
+            if counts[i] > best_count: 
                 best_count = counts[i]
                 best_palette = c
 
@@ -105,7 +107,7 @@ def draw_team(image, clusters, counts):
         team_1 = np.append(squadre[0], 1)
         team_2 = np.append(squadre[1], 2)'''
 
-    for el in fusion:
+    for el in fusion: 
         diff_0 = np.sum(np.absolute(el[0:3] - team_1[0:3]))
         diff_1 = np.sum(np.absolute(el[0:3] - team_2[0:3]))
         diff_2 = np.sum(np.absolute(el[0:3] - arbitro[0:3]))
@@ -119,16 +121,16 @@ def draw_team(image, clusters, counts):
 
     color_size = 60
 
-    #Arbitro
+    #Arbitro 
     color = tuple([int(arbitro[0]), int(arbitro[1]), int(arbitro[2])])
     image = cv2.rectangle(image, (pad + 30, (H - box_size[1])), (140, (H - box_size[1] + color_size)), color, -1)
-    image = cv2.putText(image, "Arbitri ({})".format(arbitro[3]), (180, (H - box_size[1] + color_size - 20)), cv2.FONT_HERSHEY_COMPLEX, 1, (200,200,200), 2)
+    image = cv2.putText(image, "Referee ({})".format(arbitro[3]), (180, (H - box_size[1] + color_size - 20)), cv2.FONT_HERSHEY_COMPLEX, 1, (200,200,200), 2)
 
     #Team 1
     color = tuple([int(team_1[0]), int(team_1[1]), int(team_1[2])])
     image = cv2.rectangle(image, (pad + 30, (H - box_size[1]) + (80 * 1)), (140, (H - box_size[1] + color_size) + (80 * 1)), color, -1)
     image = cv2.putText(image, "Team {} ({} player)".format(1, team_1[3]), (180, (H - box_size[1] + color_size - 20) + (80 * 1)), cv2.FONT_HERSHEY_COMPLEX, 1, (200,200,200), 2)
-
+            
     #Team 2
     color = tuple([int(team_2[0]), int(team_2[1]), int(team_2[2])])
     image = cv2.rectangle(image, (pad + 30, (H - box_size[1]) + (80 * 2)), (140, (H - box_size[1] + color_size) + (80 * 2)), color, -1)
@@ -156,5 +158,3 @@ def getTeam(image, color):
         ret = 0
 
     return ret
-
-def pairPoints(image, x1, y1, x2, y2):
