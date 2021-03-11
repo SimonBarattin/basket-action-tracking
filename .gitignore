@@ -3,9 +3,8 @@ output/
 dataset/train/
 dataset/val/
 det/
-video/
-weight/mask_rcnn_objects_0144.h5
-
+stats/stat.txt
+*.mp4
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
