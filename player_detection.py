@@ -16,7 +16,6 @@ from math import sqrt
 import time
 
 from utility.player_utility import *
-from utility.point_utility import *
 
 # Root directory of the project
 ROOT_DIR = os.path.abspath("../../")
@@ -41,7 +40,6 @@ import coco
 team_1 = [60,60,60,0]
 team_2 = [200,200,200,0]
 arbitro = [0, 102, 204, 0]
-points = []
 
 # define random colors
 def random_colors(N):
@@ -57,7 +55,6 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
     colors = random_colors(n_instances)
 
     color_list = []
-    rgb = []
 
     if not n_instances:
         return image
@@ -87,6 +84,9 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
             offset_h = int(height/3)
             offset_head = int(height/8)
 
+            #file_name = "mask_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
+            #skimage.io.imsave(file_name, mat_mask)
+
             #Crop the image with some defined offset
             crop_img = mat_mask[y1+offset_head:y2-offset_h, x1+offset_w:x2-offset_w]
 
@@ -97,20 +97,14 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
             color_list.append(rgb_color)
 
             rgb_tuple = tuple([int(rgb_color[0]), int(rgb_color[1]), int(rgb_color[2])])
-            rgb.append(rgb_tuple)
+
+            caption = '{} {:.2f}'.format(label, score) if score else label
+
+            image = apply_mask(image, mask, rgb_tuple)
+            image = cv2.rectangle(image, (x1+offset_w, y1+offset_head), (x2-offset_w, y2-offset_h), rgb_tuple, 2)
+            image = cv2.putText(image, caption, (x1, y1), cv2.FONT_HERSHEY_COMPLEX, 0.7, rgb_tuple, 2)
+
             team = getTeam(image, rgb_color)
-
-            if team!=0:
-                caption = '{} {:.2f}'.format(label, score) if score else label
-
-                image = apply_mask(image, mask, rgb_tuple)
-                image = cv2.rectangle(image, (x1+offset_w, y1+offset_head), (x2-offset_w, y2-offset_h), rgb_tuple, 1)
-                image = cv2.putText(image, caption, (x1, y1), cv2.FONT_HERSHEY_COMPLEX, 0.5, rgb_tuple, 2)
-
-                x = x1+int(width/2)
-                y = y1+int(height/2)
-                center_coordinates = Point(x,y)
-                points.append(center_coordinates)
 
             f.write('{},-1,{},{},{},{},{},-1,-1,-1,{}\n'.format(count, x1*resize, y1*resize, (x2 - x1)*resize, (y2 - y1)*resize, score, team))
 
@@ -119,13 +113,6 @@ def display_instances(count, image, boxes, masks, ids, names, scores, resize):
 
     #Update team's stats
     image = draw_team(image, clusters, counts)
-
-    R = bruteForce(points)
-    for i,t in enumerate(R):
-        #print("("+str(t[0].x)+";"+str(t[0].y)+") - ("+str(t[1].x)+";"+str(t[1].y)+")")
-        image = cv2.circle(image, (t[0].x, t[0].y), 10, rgb[i], -1)
-        image = cv2.circle(image, (t[1].x, t[1].y), 10, rgb[i], -1)
-
 
     '''file_name = "splash_{:%Y%m%dT%H%M%S}.png".format(datetime.datetime.now())
     skimage.io.imsave(file_name, image)'''
@@ -156,8 +143,6 @@ def video_segmentation(model, class_names, video_path, resize=2, display=False):
     count = 0
     success = True
 
-    mask = cv2.imread('roi_mask.jpg',0)
-
     with tqdm(total=length_input, file=sys.stdout) as pbar:
         while success:
             success, image = vcapture.read()
@@ -165,11 +150,19 @@ def video_segmentation(model, class_names, video_path, resize=2, display=False):
                 # OpenCV returns images as BGR, convert to RGB
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
+                # Basket pitch mask
+                '''
+                mask = get_mask('roi_mask.jpg')
+                mask = np.expand_dims(mask,2)
+                mask = np.repeat(mask,3,2)
+
+                #Apply pitch mask to esclude the people outside
+                image = image * mask
+                image = image.astype(np.uint8)
+                '''
+
                 # Resize for better performance
                 image = cv2.resize(image, (int(width/resize), int(height/resize)))
-                mask = cv2.resize(mask, image.shape[1::-1])
-
-                image = cv2.bitwise_and(image,image,mask=mask)
 
                 #Detect objects
                 r = model.detect([image], verbose=0)[0]
@@ -178,6 +171,12 @@ def video_segmentation(model, class_names, video_path, resize=2, display=False):
                 frame = display_instances(count, image, r["rois"], r["masks"], r["class_ids"], class_names, r["scores"], resize)
                 # RGB -> BGR to save image to video
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+
+                if display:
+                    cv2.imshow('MaskRCNN Ball Tracking', frame)
+                    if cv2.waitKey(1) & 0xFF == ord('q'):
+                        break
+
                 # Add image to video writer
                 vwriter.write(frame)
                 count += 1

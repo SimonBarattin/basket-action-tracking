@@ -1,17 +1,15 @@
 -----------------possesso palla:------------------- 
  
-arbitro (frame/total_frame): 222 / 919      ->   24% 
-team A (frame/total_frame): 193 / 919       ->   21% 
-team B (frame/total_frame): 259 / 919       ->   28% 
+arbitro (frame/total_frame): 0 / 205      ->   0% 
+team A (frame/total_frame): 0 / 205       ->   0% 
+team B (frame/total_frame): 0 / 205       ->   0% 
 
  
 -----------------ball cumulative position:------------------- 
  
-SX (frame/total_frame): 694 / 919       ->   75% 
-DX (frame/total_frame): 224 / 919       ->   24% 
+SX (frame/total_frame): 0 / 205       ->   0% 
+DX (frame/total_frame): 0 / 205       ->   0% 
 
  
 -----------------pressione difesa:------------------- 
  
-affollamenti a SX: 285 / 919       ->   5% 
-affollamenti a SX:: 16 / 919       ->   94% 
